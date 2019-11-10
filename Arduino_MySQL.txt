@@ -1,0 +1,120 @@
+/*
+     AUTOR:   Filipe T.
+     SKETCH:  Ethernet MySQL 
+     VERSÂO:    04
+     BD: https://www.db4free.net/phpMyAdmin 
+    
+*/
+
+// INCLUSÃO DE BIBLIOTECAS
+#include <SPI.h>
+#include <Ethernet.h>
+#include <MySQL_Connection.h>
+#include <MySQL_Cursor.h>
+
+#include "arduino_secrets.h"
+#include pinTemp 0
+#include pinpH 1
+
+byte mac[] = { 0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x0 };
+byte servidor[] = { 192, 168, 0, 103 }; // endereço servidor / IP local
+//char servidor[] = "index.com.br" // exemplo conetar na web
+#define portaHTTP 80
+
+// DECLARAÇÃO DE VARIÁVEIS PARA MySQL
+IPAddress server_addr(85, 10, 205, 173);  // IP of the MySQL *server* here
+char user[] = SECRET_USERDB;              // MySQL user login username
+char password[] = SECRET_PASSDB;          // MySQL user login password
+
+char INSERT_SQL[] = "INSERT INTO index_eletronic.tbSensores (pH, Temp) VALUES ('%d', '%d')";
+char query[128];
+
+// INSTANCIANDO OBJETOS
+EthernetClient clienteArduino; //Cliente do Servidor.
+MySQL_Connection conn((Client *)&clienteArduino);
+
+// DECLARAÇÃO DE FUNÇÕES
+void enviaDados();
+void leituraTemp();
+void leiturapH();
+
+
+//======ÁREA RESERVADA PARA DECLARAÇÃO DOS SENSORES==========
+
+float phPin=1;
+float TempPin=0;
+
+int leitura_pH=phPin;
+float temperatura;
+
+//=============================================================
+
+// ***************** INICIO DO SETUP **************************
+void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
+  
+ //================CONEXAO ETHERNET SHIELD ==================
+  Serial.begin(9600);
+  Ethernet.begin(mac);
+
+  if(Ethernet.begin(mac) == 0){
+    Serial.println("Falha ao conectar a rede");
+    Ethernet.begin(mac);
+  }
+  Serial.print("Conectado a rede, no ip: ");
+  Serial.println(Ethernet.localIP());
+ //=========================================================== 
+
+// CONECTA NO MySQL
+  while (!conn.connect(server_addr, 3306, user, password)) {
+    Serial.println("Conexão SQL falhou.");
+    conn.close();
+    delay(1000);
+    Serial.println("Conectando SQL novamente.");
+  }
+  Serial.println("Conectado ao servidor SQL.");
+  digitalWrite(LED_BUILTIN, HIGH);
+
+  attachInterrupt(digitalPinToInterrupt(pinTemp), leituraTemp, RISING);
+}
+
+// ***************** FIM DO SETUP ***************************
+
+// ***************** INÍCIO DO LOOP *************************
+
+void loop() {
+
+//=============================================================
+//      ÁREA RESERVADA PARA LEITURA DOS SENSORES
+
+int leitura=analogRead(TempPin);
+float voltagem=(leitura*(5.0/1500))/10;
+float temperatura=voltagem*100;
+  
+//=============================================================
+
+//====================CONECTAR E ENVIAR DADOS==================
+  
+  Serial.println("Conectando ao servidor e enviando os dados: ");
+  Serial.print("pH: ");
+  Serial.println(phPin);
+  Serial.print(voltagem);
+  Serial.println("v");
+  Serial.print("Temp: ");
+  Serial.print(temperatura, 0);
+  Serial.println("c");
+  enviaDados();
+
+delay(60000);  
+}
+// ***************** FIM DO LOOP ******************************
+void enviaDados() {
+  sprintf(query, INSERT_SQL, leitura_pH, temperatura);  //(query, INSERT_SQL, 1, creditoInserido)
+  // Initiate the query class instance
+  MySQL_Cursor *cur_mem = new MySQL_Cursor(&conn);
+  // Execute the query
+  cur_mem->execute(query);
+  delete cur_mem;
+  Serial.println("Informações Enviadas");
+}
